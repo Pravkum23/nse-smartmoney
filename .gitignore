@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+data/db/*.sqlite
+data/raw/*.csv
+.ipynb_checkpoints/
+.streamlit/secrets.toml

@@ -59,24 +59,36 @@ def build_features(prices: pd.DataFrame, delivery: pd.DataFrame,
         / s.rolling(DELIVERY_Z_WINDOW, min_periods=20).std())
 
     # delivery z-score (accumulation proxy: high delivery = positions kept)
-    dv = delivery.copy()
-    dv["date"] = pd.to_datetime(dv["date"])
-    dv = dv.sort_values(["symbol", "date"])
-    dv["deliv_z"] = dv.groupby("symbol", group_keys=False)["deliv_pct"].apply(
-        lambda s: (s - s.rolling(DELIVERY_Z_WINDOW, min_periods=20).mean())
-        / s.rolling(DELIVERY_Z_WINDOW, min_periods=20).std())
-    feat = px.merge(dv[["date", "symbol", "deliv_pct", "deliv_z"]],
-                    on=["date", "symbol"], how="left")
+    if delivery is not None and len(delivery):
+        dv = delivery.copy()
+        dv["date"] = pd.to_datetime(dv["date"])
+        dv = dv.sort_values(["symbol", "date"])
+        dv["deliv_z"] = dv.groupby("symbol",
+                                   group_keys=False)["deliv_pct"].apply(
+            lambda s: (s - s.rolling(DELIVERY_Z_WINDOW,
+                                     min_periods=20).mean())
+            / s.rolling(DELIVERY_Z_WINDOW, min_periods=20).std())
+        feat = px.merge(dv[["date", "symbol", "deliv_pct", "deliv_z"]],
+                        on=["date", "symbol"], how="left")
+    else:
+        feat = px.copy()
+        feat["deliv_pct"] = np.nan
+        feat["deliv_z"] = np.nan
     feat["deliv_spike"] = ((feat["deliv_z"] >= DELIVERY_SPIKE_Z)
                            & (feat["volume_z"] >= VOLUME_SPIKE_Z)).astype(int)
 
     # market-level FII / DII flows broadcast to every symbol
-    fl = fii_dii.copy()
-    fl["date"] = pd.to_datetime(fl["date"])
-    piv = fl.pivot_table(index="date", columns="category",
-                         values="net_cr", aggfunc="sum")
-    piv = piv.rename(columns={"FII/FPI": "fii_net_cr", "DII": "dii_net_cr"})
-    feat = feat.merge(piv.reset_index(), on="date", how="left")
+    if fii_dii is not None and len(fii_dii):
+        fl = fii_dii.copy()
+        fl["date"] = pd.to_datetime(fl["date"])
+        piv = fl.pivot_table(index="date", columns="category",
+                             values="net_cr", aggfunc="sum")
+        piv = piv.rename(columns={"FII/FPI": "fii_net_cr",
+                                  "DII": "dii_net_cr"})
+        feat = feat.merge(piv.reset_index(), on="date", how="left")
+    for c in ("fii_net_cr", "dii_net_cr"):
+        if c not in feat.columns:
+            feat[c] = np.nan
 
     # deal-based net quantities per symbol-date
     dl = classify_deals(deals)

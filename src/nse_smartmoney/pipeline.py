@@ -35,7 +35,14 @@ def _land_raw(df: pd.DataFrame, name: str) -> None:
     log.info("landed %s rows -> %s", len(df), path.name)
 
 
+DEAL_COLS = ["date", "symbol", "security", "client", "side", "qty",
+             "price", "kind"]
+
+
 def ingest_live(lookback_days: int = 400) -> dict[str, pd.DataFrame]:
+    """Pull every live source, degrading gracefully: prices are required,
+    each NSE source that fails is logged and skipped so one block page
+    never aborts the whole run."""
     from . import nse_api, prices as price_mod
 
     end = date.today()
@@ -45,19 +52,40 @@ def ingest_live(lookback_days: int = 400) -> dict[str, pd.DataFrame]:
     log.info("fetching prices via yfinance ...")
     out["prices"] = price_mod.fetch_prices(WATCHLIST, period="2y")
 
-    log.info("fetching FII/DII flows ...")
     sess = nse_api._session()
-    fii = nse_api.fetch_fii_dii_daily(sess)
-    out["fii_dii_flows"] = fii[["date", "category", "buy_cr",
-                                "sell_cr", "net_cr"]]
 
-    log.info("fetching bulk deals %s..%s ...", start, end)
-    bulk = nse_api.fetch_bulk_deals(start, end, sess=sess)
-    bulk["kind"] = "bulk"
-    log.info("fetching block deals ...")
-    block = nse_api.fetch_block_deals(start, end, sess=sess)
-    block["kind"] = "block"
-    out["deals"] = pd.concat([bulk, block], ignore_index=True)
+    log.info("fetching FII/DII flows ...")
+    try:
+        fii = nse_api.fetch_fii_dii_daily(sess)
+        out["fii_dii_flows"] = fii[["date", "category", "buy_cr",
+                                    "sell_cr", "net_cr"]]
+    except nse_api.DataSourceError as exc:
+        log.warning("FII/DII flows unavailable: %s", exc)
+        out["fii_dii_flows"] = pd.DataFrame(
+            columns=["date", "category", "buy_cr", "sell_cr", "net_cr"])
+
+    deal_frames = []
+    try:
+        log.info("fetching bulk deals %s..%s ...", start, end)
+        bulk = nse_api.fetch_bulk_deals(start, end, sess=sess)
+        bulk["kind"] = "bulk"
+        deal_frames.append(bulk)
+        log.info("fetching block deals ...")
+        block = nse_api.fetch_block_deals(start, end, sess=sess)
+        block["kind"] = "block"
+        deal_frames.append(block)
+    except nse_api.DataSourceError as exc:
+        log.warning("historical deals API unavailable (%s) — falling "
+                    "back to latest-day archive CSVs", exc)
+        for kind in ("bulk", "block"):
+            try:
+                df = nse_api.fetch_latest_bulk_csv(kind)
+                df["kind"] = kind
+                deal_frames.append(df)
+            except nse_api.DataSourceError as exc2:
+                log.warning("archive %s.csv unavailable: %s", kind, exc2)
+    out["deals"] = (pd.concat(deal_frames, ignore_index=True)
+                    if deal_frames else pd.DataFrame(columns=DEAL_COLS))
 
     log.info("fetching delivery bhavcopies (last 120 trading days) ...")
     frames = []
@@ -69,10 +97,14 @@ def ingest_live(lookback_days: int = 400) -> dict[str, pd.DataFrame]:
                 frames.append(nse_api.fetch_delivery_bhavcopy(d))
                 fetched += 1
             except nse_api.DataSourceError:
-                pass  # holiday / missing file
+                pass  # holiday / missing file / block page
         d -= timedelta(days=1)
+    if not frames:
+        log.warning("no delivery bhavcopies retrieved")
     out["delivery"] = (pd.concat(frames, ignore_index=True)
-                       if frames else pd.DataFrame())
+                       if frames else pd.DataFrame(
+                           columns=["date", "symbol", "close", "volume",
+                                    "deliv_qty", "deliv_pct"]))
     return out
 
 

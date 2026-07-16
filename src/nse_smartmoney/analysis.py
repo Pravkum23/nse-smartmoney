@@ -104,13 +104,19 @@ def granger_flows(features: pd.DataFrame, fii_dii: pd.DataFrame,
                   maxlag: int = 5) -> pd.DataFrame:
     """Does aggregate FII / DII net flow Granger-cause equal-weight
     market returns? Returns min-p across lags for each flow series."""
+    if fii_dii is None or not len(fii_dii):
+        return pd.DataFrame(columns=["flow", "direction", "best_lag",
+                                     "p_value", "significant"])
     mkt = (features.assign(date=pd.to_datetime(features["date"]))
            .groupby("date")["ret_1d"].mean().rename("mkt_ret"))
     fl = fii_dii.copy()
     fl["date"] = pd.to_datetime(fl["date"])
     piv = fl.pivot_table(index="date", columns="category", values="net_cr",
                          aggfunc="sum")
-    df = pd.concat([mkt, piv], axis=1).dropna()
+    # .join instead of concat: robust across pandas versions when mixing
+    # a Series with a DataFrame on a DatetimeIndex
+    df = piv.join(mkt, how="inner").dropna()
+    df = df[["mkt_ret"] + [c for c in df.columns if c != "mkt_ret"]]
 
     rows = []
     for col in piv.columns:

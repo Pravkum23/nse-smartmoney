@@ -95,14 +95,16 @@ cd nse-smartmoney
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-# run the pipeline (tries live sources, falls back to sample data)
-python -m nse_smartmoney.pipeline           # auto
+# run the pipeline (from the src/ folder — the package lives there)
+cd src
+python -m nse_smartmoney.pipeline           # auto: live sources, sample fallback
 python -m nse_smartmoney.pipeline --live    # live only, fail loudly
 python -m nse_smartmoney.pipeline --sample  # bundled sample data
+cd ..
 
-# explore
+# explore (from the repo root)
 jupyter notebook notebooks/01_smartmoney_end_to_end.ipynb
-streamlit run dashboard/app.py
+streamlit run dashboard/app.py    # or: python -m streamlit run dashboard/app.py
 ```
 
 **Note on live NSE access:** NSE rate-limits and blocks datacenter IPs. The fetchers warm up session cookies with browser headers, but run them from a residential connection. FII/DII provisional data covers the latest day — schedule the pipeline daily (Task Scheduler / cron) to build a history, exactly like the IDX broker-snapshot backfill.

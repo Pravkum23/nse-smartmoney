@@ -67,7 +67,7 @@ POOL = {
 # events so win rates land in a realistic 60-80 % band.
 SPOTLIGHTS = [
     ("BEL", "MERU GROWTH FUND - SERIES II", 13, 0.009),
-    ("TATAMOTORS", "SILVER OAK MUTUAL FUND", 9, 0.007),
+    ("TMPV", "SILVER OAK MUTUAL FUND", 9, 0.007),
 ]
 HIT_RATE = 0.72                 # share of planted events followed by drift
 

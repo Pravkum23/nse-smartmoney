@@ -40,24 +40,45 @@ class DataSourceError(RuntimeError):
     """Raised when a live source is unreachable or returns junk."""
 
 
+def _warmup(s: requests.Session) -> None:
+    """NSE APIs 401/serve HTML without cookies from the real pages."""
+    s.get(NSE_BASE, timeout=REQUEST_TIMEOUT)
+    time.sleep(0.6)
+    # the bulk/block API checks for cookies set by its report page
+    s.get(f"{NSE_BASE}/report-detail/display-bulk-and-block-deals",
+          timeout=REQUEST_TIMEOUT)
+    time.sleep(0.6)
+
+
 def _session() -> requests.Session:
     s = requests.Session()
     s.headers.update(HEADERS)
-    try:  # warm up cookies — NSE APIs 401 without them
-        s.get(NSE_BASE, timeout=REQUEST_TIMEOUT)
-        time.sleep(0.5)
+    try:
+        _warmup(s)
     except requests.RequestException as exc:
         raise DataSourceError(f"cannot reach NSE: {exc}") from exc
     return s
 
 
-def _get_json(sess: requests.Session, url: str, **kw):
-    try:
-        r = sess.get(url, timeout=REQUEST_TIMEOUT, **kw)
-        r.raise_for_status()
-        return r.json()
-    except (requests.RequestException, ValueError) as exc:
-        raise DataSourceError(f"{url}: {exc}") from exc
+def _get_json(sess: requests.Session, url: str, retries: int = 2, **kw):
+    """GET a JSON endpoint; on HTML/error responses re-warm cookies and
+    retry (NSE intermittently serves block pages to scripted clients)."""
+    last: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            r = sess.get(url, timeout=REQUEST_TIMEOUT, **kw)
+            r.raise_for_status()
+            return r.json()
+        except (requests.RequestException, ValueError) as exc:
+            last = exc
+            log.warning("attempt %s failed for %s (%s) — re-warming "
+                        "cookies", attempt + 1, url, type(exc).__name__)
+            time.sleep(2 * (attempt + 1))
+            try:
+                _warmup(sess)
+            except requests.RequestException:
+                pass
+    raise DataSourceError(f"{url}: {last}") from last
 
 
 # ---------------------------------------------------------------------------
@@ -117,9 +138,11 @@ def fetch_block_deals(start: date, end: date, **kw) -> pd.DataFrame:
     return _fetch_deals("block-deals", start, end, **kw)
 
 
-def fetch_latest_bulk_csv() -> pd.DataFrame:
-    """Latest-day bulk deals from the NSE archives CSV (no cookies needed)."""
-    url = f"{NSE_ARCHIVES}/content/equities/bulk.csv"
+def fetch_latest_bulk_csv(kind: str = "bulk") -> pd.DataFrame:
+    """Latest-day bulk/block deals from the NSE archives CSV
+    (no cookies needed — reliable fallback when the historical API
+    serves HTML block pages)."""
+    url = f"{NSE_ARCHIVES}/content/equities/{kind}.csv"
     try:
         r = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
         r.raise_for_status()

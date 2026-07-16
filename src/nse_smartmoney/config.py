@@ -48,7 +48,7 @@ NIFTY50: dict[str, str] = {
     "RELIANCE": "Reliance Industries", "SBILIFE": "SBI Life",
     "SBIN": "State Bank of India", "SHRIRAMFIN": "Shriram Finance",
     "SUNPHARMA": "Sun Pharma", "TATACONSUM": "Tata Consumer",
-    "TATAMOTORS": "Tata Motors", "TATASTEEL": "Tata Steel",
+    "TMPV": "Tata Motors Passenger Vehicles", "TATASTEEL": "Tata Steel",
     "TCS": "TCS", "TECHM": "Tech Mahindra",
     "TITAN": "Titan", "TRENT": "Trent",
     "ULTRACEMCO": "UltraTech Cement", "WIPRO": "Wipro",

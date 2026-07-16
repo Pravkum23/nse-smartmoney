@@ -82,7 +82,8 @@ def ingest_live(lookback_days: int = 400) -> dict[str, pd.DataFrame]:
                 df = nse_api.fetch_latest_bulk_csv(kind)
                 df["kind"] = kind
                 deal_frames.append(df)
-            except nse_api.DataSourceError as exc2:
+                log.info("archive %s.csv: %s deals", kind, len(df))
+            except Exception as exc2:               # noqa: BLE001
                 log.warning("archive %s.csv unavailable: %s", kind, exc2)
     out["deals"] = (pd.concat(deal_frames, ignore_index=True)
                     if deal_frames else pd.DataFrame(columns=DEAL_COLS))

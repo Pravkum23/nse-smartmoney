@@ -148,15 +148,28 @@ def fetch_latest_bulk_csv(kind: str = "bulk") -> pd.DataFrame:
         r.raise_for_status()
     except requests.RequestException as exc:
         raise DataSourceError(f"{url}: {exc}") from exc
-    df = pd.read_csv(io.StringIO(r.text))
+    cols = ["date", "symbol", "security", "client", "side", "qty", "price"]
+    if "NO RECORDS" in r.text[:500].upper():
+        return pd.DataFrame(columns=cols)
+    try:
+        df = pd.read_csv(io.StringIO(r.text))
+    except Exception as exc:                         # noqa: BLE001
+        raise DataSourceError(f"{url}: unparseable CSV ({exc})") from exc
     df.columns = [c.strip() for c in df.columns]
     df = df.rename(columns={
         "Date": "date", "Symbol": "symbol", "Security Name": "security",
         "Client Name": "client", "Buy/Sell": "side",
         "Quantity Traded": "qty",
         "Trade Price / Wght. Avg. Price": "price"})
-    df["date"] = pd.to_datetime(df["date"], format="%d-%b-%Y").dt.date
-    return df[["date", "symbol", "security", "client", "side", "qty", "price"]]
+    if "date" not in df.columns:
+        raise DataSourceError(f"{url}: unexpected columns {list(df.columns)}")
+    # tolerate placeholder rows like "NO RECORDS"
+    df["date"] = pd.to_datetime(df["date"], format="%d-%b-%Y",
+                                errors="coerce").dt.date
+    df = df.dropna(subset=["date"])
+    df["qty"] = pd.to_numeric(df["qty"], errors="coerce")
+    df["price"] = pd.to_numeric(df["price"], errors="coerce")
+    return df[cols]
 
 
 # ---------------------------------------------------------------------------

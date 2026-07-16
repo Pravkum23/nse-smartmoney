@@ -78,8 +78,12 @@ def upsert(df: pd.DataFrame, table: str, db_path=DB_PATH) -> int:
     if "date" in df.columns:
         df["date"] = df["date"].astype(str)
     with connect(db_path) as con:
-        cols = ",".join(df.columns)
-        ph = ",".join("?" * len(df.columns))
+        table_cols = [r[1] for r in
+                      con.execute(f"PRAGMA table_info({table})")]
+        keep = [c for c in df.columns if c in table_cols]
+        df = df[keep]
+        cols = ",".join(keep)
+        ph = ",".join("?" * len(keep))
         con.executemany(
             f"INSERT OR REPLACE INTO {table} ({cols}) VALUES ({ph})",
             df.itertuples(index=False, name=None))

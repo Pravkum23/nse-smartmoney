@@ -7,3 +7,4 @@ data/db/*.sqlite
 data/raw/*.csv
 .ipynb_checkpoints/
 .streamlit/secrets.toml
+!data/demo/smartmoney_demo.sqlite

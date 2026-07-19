@@ -24,7 +24,7 @@ from nse_smartmoney import storage                              # noqa: E402
 from nse_smartmoney.analysis import (delivery_spike_study,      # noqa: E402
                                      event_study_curve, granger_flows,
                                      granger_stock_flow)
-from nse_smartmoney.config import (DII_PROFILES,                # noqa: E402
+from nse_smartmoney.config import (DB_PATH, DII_PROFILES,       # noqa: E402
                                    SMART_MONEY_PROFILES, WATCHLIST)
 
 st.set_page_config(page_title="NSE Smart-Money Tracker", page_icon="📈",
@@ -80,6 +80,10 @@ if D["source"] == "sample":
                        "participants). Run `python -m nse_smartmoney."
                        "pipeline --live` on a machine with NSE access "
                        "for real data.")
+elif str(DB_PATH).endswith("smartmoney_demo.sqlite"):
+    st.sidebar.info("**Live demo** — real NSE bulk/block-deal & price "
+                    "data (2024–2026), bundled read-only. Explore the "
+                    "tabs; pick any Nifty 50 ticker in the sidebar.")
 
 sym_px = prices[prices.symbol == symbol].sort_values("date").tail(lookback)
 sym_ft = features[features.symbol == symbol].sort_values("date") \

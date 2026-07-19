@@ -16,9 +16,25 @@ DATA_DIR = PROJECT_ROOT / "data"
 RAW_DIR = DATA_DIR / "raw"
 PROCESSED_DIR = DATA_DIR / "processed"
 DB_DIR = DATA_DIR / "db"
+DEMO_DB = DATA_DIR / "demo" / "smartmoney_demo.sqlite"
+
+
+def _default_db() -> Path:
+    """Prefer the live warehouse; fall back to the bundled demo DB so a
+    fresh clone / cloud deploy (Streamlit Community Cloud) works with no
+    data setup. Override explicitly with the NSE_SM_DB env var."""
+    env = os.environ.get("NSE_SM_DB")
+    if env:
+        return Path(env)
+    live = DB_DIR / "smartmoney.sqlite"
+    if live.exists():
+        return live
+    return DEMO_DB
+
+
 # Override with NSE_SM_DB env var (useful on network-mounted filesystems
 # where SQLite locking fails).
-DB_PATH = Path(os.environ.get("NSE_SM_DB", DB_DIR / "smartmoney.sqlite"))
+DB_PATH = _default_db()
 
 for _d in (RAW_DIR, PROCESSED_DIR, DB_DIR):
     _d.mkdir(parents=True, exist_ok=True)

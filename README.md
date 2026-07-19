@@ -87,6 +87,10 @@ nse-smartmoney/
     ├── raw/  processed/  db/smartmoney.sqlite
 ```
 
+## Live demo
+
+A read-only demo database (real NSE bulk/block-deal + price data, 2024–2026) is bundled at `data/demo/smartmoney_demo.sqlite`, so the dashboard runs with zero data setup — locally or on Streamlit Community Cloud. Deploy: push to GitHub, go to share.streamlit.io, point it at this repo with main file `dashboard/app.py`.
+
 ## Setup
 
 ```bash

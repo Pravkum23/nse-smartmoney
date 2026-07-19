@@ -115,6 +115,74 @@ def ingest_sample() -> dict[str, pd.DataFrame]:
     return generate()
 
 
+def ingest_manual_deals() -> pd.DataFrame:
+    """Read user-downloaded NSE bulk/block-deal CSVs from data/raw/manual/.
+
+    NSE's historical deals API blocks scripts, but the report page at
+    nseindia.com/report-detail/display-bulk-and-block-deals lets a human
+    download up to one year per CSV. Drop those files here:
+
+        data/raw/manual/bulk*.csv   (bulk deals)
+        data/raw/manual/block*.csv  (block deals)
+
+    Filenames decide the kind; any other name defaults to bulk.
+    """
+    manual_dir = RAW_DIR / "manual"
+    if not manual_dir.exists():
+        return pd.DataFrame(columns=DEAL_COLS)
+    frames = []
+    for p in sorted(manual_dir.glob("*.csv")):
+        try:
+            df = pd.read_csv(p)
+        except Exception as exc:                     # noqa: BLE001
+            log.warning("manual file %s unreadable: %s", p.name, exc)
+            continue
+        df.columns = [c.strip() for c in df.columns]
+        ren = {}
+        for c in df.columns:
+            k = c.upper().replace(" ", "")
+            if k == "DATE":
+                ren[c] = "date"
+            elif k == "SYMBOL":
+                ren[c] = "symbol"
+            elif "SECURITY" in k:
+                ren[c] = "security"
+            elif "BUY/SELL" in k or k == "BUYSELL":
+                ren[c] = "side"
+            elif "CLIENT" in k:
+                ren[c] = "client"
+            elif "QUANTITY" in k or k == "QTYTRADED":
+                ren[c] = "qty"
+            elif "PRICE" in k:
+                ren[c] = "price"
+        df = df.rename(columns=ren)
+        need = {"date", "symbol", "client", "side", "qty"}
+        if not need.issubset(df.columns):
+            log.warning("manual file %s: unrecognised columns %s — "
+                        "skipped", p.name, list(df.columns)[:8])
+            continue
+        df["date"] = pd.to_datetime(df["date"], format="%d-%b-%Y",
+                                    errors="coerce").dt.date
+        df = df.dropna(subset=["date"])
+        df["qty"] = pd.to_numeric(
+            df["qty"].astype(str).str.replace(",", ""), errors="coerce")
+        if "price" in df.columns:
+            df["price"] = pd.to_numeric(
+                df["price"].astype(str).str.replace(",", ""),
+                errors="coerce")
+        else:
+            df["price"] = pd.NA
+        if "security" not in df.columns:
+            df["security"] = df["symbol"]
+        df["side"] = df["side"].astype(str).str.upper().str.strip()
+        df["kind"] = "block" if "block" in p.name.lower() else "bulk"
+        frames.append(df[DEAL_COLS])
+        log.info("manual %s: %s deals", p.name, len(df))
+    if not frames:
+        return pd.DataFrame(columns=DEAL_COLS)
+    return pd.concat(frames, ignore_index=True)
+
+
 # ---------------------------------------------------------------------------
 def run(mode: str = "auto") -> None:
     storage.init_db()
@@ -133,6 +201,15 @@ def run(mode: str = "auto") -> None:
     if data is None:
         data = ingest_sample()
         source = "sample"
+
+    # merge any manually downloaded deal history (data/raw/manual/*.csv);
+    # the warehouse primary key dedupes overlapping rows
+    if source != "sample":
+        manual = ingest_manual_deals()
+        if len(manual):
+            data["deals"] = pd.concat([data["deals"], manual],
+                                      ignore_index=True)
+            log.info("merged %s manually downloaded deals", len(manual))
 
     # land raw + load warehouse
     for name, df in data.items():
